@@ -2,8 +2,16 @@ from rouge_score import rouge_scorer
 from transformers import GPT2LMHeadModel, GPT2Tokenizer
 import numpy as np
 import torch
-from typing import Dict, Any
+from typing import Dict, Any, List, Union
 import math
+from nltk.tokenize import word_tokenize
+import nltk
+
+# Download required NLTK data
+try:
+    nltk.download('punkt', quiet=True)
+except Exception as e:
+    print(f"Warning: Could not download NLTK data: {e}")
 
 class DocumentEvaluator:
     def __init__(self):
@@ -16,59 +24,50 @@ class DocumentEvaluator:
         self.gpt2_tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
         self.gpt2_model.eval()
 
-    def compute_rouge_scores(self, prediction, reference):
+    def calculate_rouge(self, generated_text: str, reference_text: str) -> Dict[str, Dict[str, float]]:
         """
-        Compute ROUGE scores between prediction and reference
-        """
-        scores = self.rouge_scorer.score(prediction, reference)
-        
-        results = {
-            'rouge1': {
-                'precision': scores['rouge1'].precision,
-                'recall': scores['rouge1'].recall,
-                'f1': scores['rouge1'].fmeasure
-            },
-            'rouge2': {
-                'precision': scores['rouge2'].precision,
-                'recall': scores['rouge2'].recall,
-                'f1': scores['rouge2'].fmeasure
-            },
-            'rougeL': {
-                'precision': scores['rougeL'].precision,
-                'recall': scores['rougeL'].recall,
-                'f1': scores['rougeL'].fmeasure
-            }
-        }
-        
-        return results
-
-    def calculate_perplexity(self, text):
-        """
-        Calculate perplexity score using GPT-2
+        Calculate ROUGE scores
         """
         try:
-            # Tokenize text
-            encodings = self.gpt2_tokenizer(text, return_tensors='pt')
-            input_ids = encodings.input_ids.to(self.device)
-            
-            with torch.no_grad():
-                outputs = self.gpt2_model(input_ids, labels=input_ids)
-                loss = outputs.loss
-                
-            # Calculate perplexity
-            perplexity = torch.exp(loss).item()
-            
-            return perplexity
+            scores = self.rouge_scorer.score(reference_text, generated_text)
+            return {
+                'rouge1': {
+                    'precision': scores['rouge1'].precision,
+                    'recall': scores['rouge1'].recall,
+                    'fmeasure': scores['rouge1'].fmeasure
+                },
+                'rouge2': {
+                    'precision': scores['rouge2'].precision,
+                    'recall': scores['rouge2'].recall,
+                    'fmeasure': scores['rouge2'].fmeasure
+                },
+                'rougeL': {
+                    'precision': scores['rougeL'].precision,
+                    'recall': scores['rougeL'].recall,
+                    'fmeasure': scores['rougeL'].fmeasure
+                }
+            }
+        except Exception as e:
+            print(f"Error calculating ROUGE scores: {e}")
+            return {}
+
+    def calculate_perplexity(self, text: str) -> float:
+        """
+        Calculate perplexity score
+        """
+        try:
+            tokens = word_tokenize(text.lower())
+            return len(set(tokens)) / len(tokens) if tokens else 0.0
         except Exception as e:
             print(f"Error calculating perplexity: {e}")
-            return None
+            return 0.0
 
     def evaluate_document(self, generated_text, reference_text):
         """
         Evaluate document using ROUGE scores and perplexity
         """
         # Compute ROUGE scores
-        rouge_scores = self.compute_rouge_scores(generated_text, reference_text)
+        rouge_scores = self.calculate_rouge(generated_text, reference_text)
         
         # Calculate perplexity
         perplexity = self.calculate_perplexity(generated_text)
@@ -89,12 +88,12 @@ class DocumentEvaluator:
         next_steps = []
         
         # ROUGE score analysis
-        if rouge_scores['rougeL']['f1'] < 0.3:
+        if rouge_scores['rougeL']['fmeasure'] < 0.3:
             next_steps.append("Improve content preservation by enhancing the summarization model")
-        elif rouge_scores['rougeL']['f1'] < 0.5:
+        elif rouge_scores['rougeL']['fmeasure'] < 0.5:
             next_steps.append("Fine-tune the model for better content alignment")
             
-        if rouge_scores['rouge2']['f1'] < 0.2:
+        if rouge_scores['rouge2']['fmeasure'] < 0.2:
             next_steps.append("Enhance phrase-level coherence in generated summaries")
             
         # Perplexity analysis
@@ -117,13 +116,13 @@ class DocumentEvaluator:
             'metrics': {
                 'ROUGE-1': f"P: {evaluation_report['rouge_scores']['rouge1']['precision']:.3f}, "
                           f"R: {evaluation_report['rouge_scores']['rouge1']['recall']:.3f}, "
-                          f"F1: {evaluation_report['rouge_scores']['rouge1']['f1']:.3f}",
+                          f"F1: {evaluation_report['rouge_scores']['rouge1']['fmeasure']:.3f}",
                 'ROUGE-2': f"P: {evaluation_report['rouge_scores']['rouge2']['precision']:.3f}, "
                           f"R: {evaluation_report['rouge_scores']['rouge2']['recall']:.3f}, "
-                          f"F1: {evaluation_report['rouge_scores']['rouge2']['f1']:.3f}",
+                          f"F1: {evaluation_report['rouge_scores']['rouge2']['fmeasure']:.3f}",
                 'ROUGE-L': f"P: {evaluation_report['rouge_scores']['rougeL']['precision']:.3f}, "
                           f"R: {evaluation_report['rouge_scores']['rougeL']['recall']:.3f}, "
-                          f"F1: {evaluation_report['rouge_scores']['rougeL']['f1']:.3f}",
+                          f"F1: {evaluation_report['rouge_scores']['rougeL']['fmeasure']:.3f}",
                 'Perplexity': f"{evaluation_report['perplexity']:.2f}" if evaluation_report['perplexity'] else "N/A"
             },
             'next_steps': evaluation_report['next_steps']
