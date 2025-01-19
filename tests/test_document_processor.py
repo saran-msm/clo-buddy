@@ -1,6 +1,12 @@
 import pytest
-from utils.document_processor import DocumentProcessor
 from io import BytesIO
+import sys
+import os
+
+# Add project root to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from utils.document_processor import DocumentProcessor
 
 def test_extract_text():
     processor = DocumentProcessor()
